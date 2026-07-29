@@ -3699,6 +3699,11 @@ function exportSavedFile(){
 (function(){
   var SUPA_URL='https://hiaehhrlidjrezrlbyux.supabase.co';
   var SUPA_KEY='sb_publishable_HjBtqmrh8YTF4yP5x6z7UQ_CTFeVRh4';
+  var _origSet=Storage.prototype.setItem;
+  var _supaQ={};
+  var _lastPoll=new Date(0).toISOString();
+  var _activeBox=null; // track which box is being edited
+
   function getClient(){
     if(!window._supaClient){
       if(!window.supabase){console.warn('Supabase SDK not loaded');return null;}
@@ -3707,48 +3712,89 @@ function exportSavedFile(){
     return window._supaClient;
   }
 
+  // Track focused note box / table cell to avoid overwriting while typing
+  document.addEventListener('focusin',function(e){
+    if(e.target&&(e.target.classList.contains('note-box')||e.target.closest('td[contenteditable]')))
+      _activeBox=e.target;
+  });
+  document.addEventListener('focusout',function(e){
+    if(e.target===_activeBox) _activeBox=null;
+  });
+
+  // Apply a single key/value from Supabase into the UI (skip if user is editing that element)
+  function applyToUI(key,value){
+    if(value==null) return;
+    var current=localStorage.getItem(key);
+    if(current===value) return; // no change
+    _origSet.call(localStorage,key,value);
+
+    if(key.startsWith('dma_note_')){
+      var seen={};
+      document.querySelectorAll('.note-box[contenteditable]').forEach(function(box){
+        var ph=box.dataset.placeholder||'note';
+        var idx=seen[ph]||0; seen[ph]=idx+1;
+        var bKey=typeof noteKey==='function'?noteKey(box,idx):('dma_note_'+ph+'_'+idx);
+        if(bKey===key && box!==_activeBox){
+          box.innerHTML=value;
+          if(typeof wrapBareImages==='function') wrapBareImages(box);
+        }
+      });
+    } else if(key.startsWith('dma_tbl_')){
+      var id=key.replace('dma_tbl_','');
+      var tbl=document.querySelector('table.editable-table[data-tbl-id="'+id+'"]');
+      if(tbl && !tbl.contains(_activeBox)){
+        if(typeof loadTableFromLS==='function') loadTableFromLS(tbl);
+        if(typeof initTableColResizers==='function') initTableColResizers(tbl);
+      }
+    }
+  }
+
   // Override localStorage.setItem: sync dma_ keys to Supabase (debounced 1s)
-  var _origSet=Storage.prototype.setItem;
-  var _supaQ={};
   Storage.prototype.setItem=function(key,val){
     _origSet.call(this,key,val);
     if(this===localStorage&&(key.startsWith('dma_note_')||key.startsWith('dma_tbl_'))){
       clearTimeout(_supaQ[key]);
       _supaQ[key]=setTimeout(function(){
         var cl=getClient(); if(!cl)return;
+        var now=new Date().toISOString();
         cl.from('dashboard_data')
-          .upsert({key:key,value:val,updated_at:new Date().toISOString()},{onConflict:'key'})
+          .upsert({key:key,value:val,updated_at:now},{onConflict:'key'})
           .catch(function(){});
       },1000);
     }
   };
 
-  // On window load: fetch all data from Supabase → localStorage → refresh UI
-  window.addEventListener('load',async function(){
+  // Initial load: fetch all data on page load
+  async function initialLoad(){
     var cl=getClient(); if(!cl)return;
     try{
-      var res=await cl.from('dashboard_data').select('key,value');
+      var res=await cl.from('dashboard_data').select('key,value,updated_at').neq('key','_test_connection');
       if(!res.data||res.data.length===0)return;
-      // Write to localStorage without triggering the override
-      res.data.forEach(function(row){
-        if(row.value!=null) try{_origSet.call(localStorage,row.key,row.value);}catch(e){}
-      });
-      // Re-load note boxes from updated localStorage
-      var seen={};
-      document.querySelectorAll('.note-box[contenteditable]').forEach(function(box){
-        var ph=box.dataset.placeholder||'note';
-        var idx=seen[ph]||0; seen[ph]=idx+1;
-        box.dataset.noteIdx=idx;
-        var key=typeof noteKey==='function'?noteKey(box,idx):('dma_note_'+(box.dataset.placeholder||'note')+'_'+idx);
-        var saved=localStorage.getItem(key);
-        if(saved!==null){box.innerHTML=saved;if(typeof wrapBareImages==='function')wrapBareImages(box);}
-      });
-      // Re-load editable tables
-      document.querySelectorAll('table.editable-table').forEach(function(tbl){
-        if(typeof loadTableFromLS==='function')loadTableFromLS(tbl);
-        if(typeof initTableColResizers==='function')initTableColResizers(tbl);
-      });
-    }catch(e){console.warn('Supabase load error:',e);}
+      res.data.forEach(function(row){ applyToUI(row.key,row.value); });
+      if(res.data.length>0){
+        var times=res.data.map(function(r){return r.updated_at||'';}).filter(Boolean).sort();
+        if(times.length) _lastPoll=times[times.length-1];
+      }
+    }catch(e){console.warn('Supabase initial load error:',e);}
+  }
+
+  // Poll every 5s: only fetch rows updated since last poll
+  async function poll(){
+    var cl=getClient(); if(!cl)return;
+    try{
+      var res=await cl.from('dashboard_data').select('key,value,updated_at')
+        .gt('updated_at',_lastPoll).neq('key','_test_connection');
+      if(!res.data||res.data.length===0)return;
+      res.data.forEach(function(row){ applyToUI(row.key,row.value); });
+      var times=res.data.map(function(r){return r.updated_at||'';}).filter(Boolean).sort();
+      if(times.length) _lastPoll=times[times.length-1];
+    }catch(e){}
+  }
+
+  window.addEventListener('load',function(){
+    initialLoad().then(function(){
+      setInterval(poll,5000);
+    });
   });
 })();
 
