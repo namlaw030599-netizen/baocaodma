@@ -285,7 +285,8 @@
 
 <nav class="topnav">
  <div class="brand">HD SAISON <span>Social Media Analytics</span></div>
- <button onclick="exportSavedFile()" style="margin-left:auto;padding:7px 16px;font-size:12px;font-weight:700;background:#fff;color:#1D4ED8;border:none;border-radius:8px;cursor:pointer;display:flex;align-items:center;gap:6px">Lưu file</button>
+ <button onclick="imodOpen()" style="margin-left:auto;padding:7px 14px;font-size:12px;font-weight:700;background:rgba(255,255,255,.15);color:#fff;border:1.5px solid rgba(255,255,255,.5);border-radius:8px;cursor:pointer;display:flex;align-items:center;gap:6px">📥 Nhập data</button>
+ <button onclick="exportSavedFile()" style="padding:7px 16px;font-size:12px;font-weight:700;background:#fff;color:#1D4ED8;border:none;border-radius:8px;cursor:pointer;display:flex;align-items:center;gap:6px">Lưu file</button>
   <button class="mob-menu-btn" onclick="toggleMobMenu()" aria-label="Menu">☰</button>
 </nav>
 <div class="mob-overlay" id="mob-overlay" onclick="closeMobMenu()"></div>
@@ -3714,6 +3715,13 @@ function exportSavedFile(){
   if(head) head.insertBefore(initScript,head.firstChild);
  }
 
+ // Bake current in-memory DATA into exported HTML
+ const dataScripts=[...clone.querySelectorAll('script')].filter(s=>s.textContent.includes('const DATA = {'));
+ dataScripts.forEach(s=>{
+  const lines=s.textContent.split('\n');
+  const di=lines.findIndex(l=>l.trimStart().startsWith('const DATA = {'));
+  if(di>=0){lines[di]='const DATA = '+JSON.stringify(DATA)+';';s.textContent=lines.join('\n');}
+ });
  const html='<!DOCTYPE html>\n'+clone.outerHTML;
  const blob=new Blob([html],{type:'text/html;charset=utf-8'});
  const url=URL.createObjectURL(blob);
@@ -3725,6 +3733,185 @@ function exportSavedFile(){
  a.remove();
  setTimeout(()=>URL.revokeObjectURL(url),3000);
 }
+
+// ── Data Input Modal ─────────────────────────────────────────────────────────
+(function(){
+ var DAILY_TT=[
+  {k:'ngay',lbl:'Ngày (DD/MM/YYYY)',t:'date'},{k:'xem',lbl:'Lượt xem',t:'num'},{k:'reach',lbl:'Tiếp cận',t:'num'},
+  {k:'xemhd',lbl:'Xem Full',t:'num'},{k:'thich',lbl:'Thích',t:'num'},{k:'chiase',lbl:'Chia sẻ',t:'num'},
+  {k:'bl',lbl:'Bình luận',t:'num'},{k:'web',lbl:'Web Click',t:'num'},{k:'leads',lbl:'Leads',t:'num'},
+  {k:'app',lbl:'App',t:'num'},{k:'fnew',lbl:'Follow mới',t:'num'},{k:'flost',lbl:'Follow rời',t:'num'},{k:'rong',lbl:'Rong',t:'num'}
+ ];
+ var VIDEO_TT=[
+  {k:'ngay',lbl:'Ngày',t:'date'},{k:'gio',lbl:'Giờ đăng',t:'num'},{k:'tieude',lbl:'Tiêu đề',t:'str'},
+  {k:'chude',lbl:'Chủ đề',t:'str'},{k:'xem',lbl:'Lượt xem',t:'num'},{k:'thich',lbl:'Thích',t:'num'},
+  {k:'bl',lbl:'BL',t:'num'},{k:'chiase',lbl:'Chia sẻ',t:'num'},{k:'yeuthich',lbl:'Yêu thích',t:'num'},
+  {k:'url',lbl:'URL',t:'str'},{k:'binhluan',lbl:'Bình luận',t:'num'}
+ ];
+ window.IMOD_CFG={
+  ttd:{lbl:'TikTok HD – Theo ngày',cols:DAILY_TT},
+  ttad:{lbl:'TikTok AT – Theo ngày',cols:DAILY_TT},
+  ttv:{lbl:'TikTok HD – Video',cols:VIDEO_TT},
+  ttav:{lbl:'TikTok AT – Video',cols:VIDEO_TT.filter(function(c){return c.k!=='binhluan';})},
+  fb:{lbl:'Facebook – Bài đăng',cols:[
+   {k:'ngay',lbl:'Ngày',t:'date'},{k:'gio',lbl:'Giờ',t:'num'},{k:'tieude',lbl:'Tiêu đề',t:'str'},
+   {k:'loai',lbl:'Loại (Ảnh/Video/Reels)',t:'str'},{k:'xem',lbl:'Lượt xem',t:'num'},{k:'tiepcan',lbl:'Tiếp cận',t:'num'},
+   {k:'camxuc',lbl:'Cảm xúc',t:'num'},{k:'binhluan',lbl:'Bình luận',t:'num'},{k:'chiase',lbl:'Chia sẻ',t:'num'},
+   {k:'click',lbl:'Click',t:'num'},{k:'linkclick',lbl:'Link Click',t:'num'},{k:'chude',lbl:'Chủ đề',t:'str'}
+  ]},
+  ytd:{lbl:'YouTube – Theo ngày',cols:[
+   {k:'ngay',lbl:'Ngày',t:'date'},{k:'xem',lbl:'Lượt xem',t:'num'},{k:'sosanh',lbl:'So sánh',t:'num'},{k:'danhgia',lbl:'Đánh giá',t:'str'}
+  ]},
+  ytv:{lbl:'YouTube – Video',cols:[
+   {k:'ngay',lbl:'Ngày',t:'date'},{k:'tieude',lbl:'Tiêu đề',t:'str'},{k:'chude',lbl:'Chủ đề',t:'str'},
+   {k:'xem',lbl:'Lượt xem',t:'num'},{k:'sub',lbl:'Sub',t:'num'},{k:'thich',lbl:'Thích',t:'num'},
+   {k:'retention',lbl:'Retention(%)',t:'float'},{k:'url',lbl:'URL',t:'str'},{k:'gioxem',lbl:'Giờ xem',t:'float'},{k:'ctr',lbl:'CTR(%)',t:'float'}
+  ]},
+  zad:{lbl:'Zalo – Theo ngày',cols:[
+   {k:'ngay',lbl:'Ngày',t:'date'},{k:'xem',lbl:'Lượt xem',t:'num'},{k:'thich',lbl:'Thích',t:'num'},
+   {k:'chiase',lbl:'Chia sẻ',t:'num'},{k:'binhluan',lbl:'Bình luận',t:'num'},{k:'follow',lbl:'Follow (lũy kế)',t:'num'}
+  ]},
+  zav:{lbl:'Zalo – Video',cols:[
+   {k:'ngay',lbl:'Ngày',t:'date'},{k:'tieude',lbl:'Tiêu đề',t:'str'},{k:'xem',lbl:'Lượt xem',t:'num'},
+   {k:'thich',lbl:'Thích',t:'num'},{k:'chiase',lbl:'Chia sẻ',t:'num'},{k:'binhluan',lbl:'Bình luận',t:'num'},
+   {k:'tongtgxem',lbl:'Tổng TG xem',t:'float'},{k:'tbtgxem',lbl:'TB TG xem',t:'float'},{k:'tile',lbl:'Tỉ lệ(%)',t:'num'}
+  ]},
+  zap:{lbl:'Zalo – Bài đăng',cols:[
+   {k:'ngay',lbl:'Ngày',t:'date'},{k:'tieude',lbl:'Tiêu đề',t:'str'},
+   {k:'xem',lbl:'Lượt xem',t:'num'},{k:'share',lbl:'Chia sẻ',t:'num'},{k:'trangthai',lbl:'Trạng thái',t:'str'}
+  ]}
+ };
+
+ function pDate(s){
+  if(!s) return null;
+  s=s.trim();
+  var d,m,y;
+  if(/^\d{1,2}\/\d{1,2}\/\d{4}$/.test(s)){var p=s.split('/');d=+p[0];m=+p[1];y=+p[2];}
+  else if(/^\d{4}-\d{2}-\d{2}$/.test(s)){var p=s.split('-');y=+p[0];m=+p[1];d=+p[2];}
+  else return null;
+  if(!d||!m||!y) return null;
+  return {d:d,m:m,y:y,fmt:(d<10?'0':'')+d+'/'+(m<10?'0':'')+m+'/'+y};
+ }
+ function pNum(s,t){
+  if(s===null||s===undefined||s==='') return t==='str'?'':0;
+  s=String(s).trim();
+  if(t==='str') return s;
+  var n=parseFloat(s.replace(/[,\s]/g,''));
+  return isNaN(n)?0:(t==='float'?n:Math.round(n));
+ }
+ var DAYS_VI=['Chủ Nhật','Thứ 2','Thứ 3','Thứ 4','Thứ 5','Thứ 6','Thứ 7'];
+ function deriveRow(row,dsKey){
+  var dt=pDate(row.ngay);
+  if(!dt) return;
+  var thang=(dt.y<2026)?0:dt.m;
+  if(dsKey==='fb'||dsKey==='zad'||dsKey==='zav'||dsKey==='zap'||dsKey==='ytd'||dsKey==='ytv') row.thang=thang;
+  if(dsKey==='ttv'||dsKey==='ttav') row.thang=dt.m;
+  if(dsKey==='zad'||dsKey==='ytd'){row.thu=DAYS_VI[new Date(dt.y,dt.m-1,dt.d).getDay()];row.tuan=Math.ceil(dt.d/7);}
+ }
+
+ var _ds='ttd',_rows=null;
+
+ window.imodOpen=function(){
+  document.getElementById('imod-ov').classList.add('open');
+  imodSwitch(_ds);
+ };
+ function imodClose(){document.getElementById('imod-ov').classList.remove('open');}
+
+ function imodSwitch(dsKey){
+  _ds=dsKey; _rows=null;
+  document.getElementById('imod-paste').value='';
+  document.getElementById('imod-preview').innerHTML='';
+  document.getElementById('imod-status').textContent='';
+  document.getElementById('imod-confirm-btn').style.display='none';
+  document.querySelectorAll('.imod-ds').forEach(function(el){el.classList.toggle('active',el.dataset.ds===dsKey);});
+  var cfg=IMOD_CFG[dsKey];
+  document.getElementById('imod-colguide').innerHTML='<b>'+cfg.lbl+'</b> — Thứ tự cột dán từ trái sang phải:<br>'+
+   cfg.cols.map(function(c,i){return '<span class="imod-pill">'+(i+1)+'. '+c.lbl+'</span>';}).join('');
+ }
+
+ window.imodParse=function(){
+  var text=document.getElementById('imod-paste').value.trim();
+  if(!text){document.getElementById('imod-status').textContent='⚠️ Chưa có dữ liệu!';return;}
+  var cfg=IMOD_CFG[_ds],cols=cfg.cols;
+  var lines=text.split('\n').filter(function(l){return l.trim();});
+  var start=0;
+  // Skip header if first cell is not a date
+  if(lines.length&&!pDate(lines[0].split('\t')[0])&&!pDate(lines[0].split(',')[0])) start=1;
+  var rows=[],errs=0;
+  for(var i=start;i<lines.length;i++){
+   var sep=lines[i].indexOf('\t')>=0?'\t':',';
+   var cells=lines[i].split(sep);
+   if(cells.every(function(c){return !c.trim();})) continue;
+   var row={};
+   cols.forEach(function(c,ci){
+    var val=ci<cells.length?cells[ci]:'';
+    if(c.t==='date'){var dt=pDate(val);row[c.k]=dt?dt.fmt:'';}
+    else row[c.k]=pNum(val,c.t);
+   });
+   if(!row.ngay||!pDate(row.ngay)){errs++;continue;}
+   deriveRow(row,_ds);
+   rows.push(row);
+  }
+  _rows=rows;
+  var allK=cols.map(function(c){return c.k;});
+  var errMsg=errs?' · <span style="color:#EF4444">'+errs+' hàng lỗi bị bỏ qua</span>':'';
+  if(!rows.length){
+   document.getElementById('imod-status').innerHTML='⚠️ Không có hàng hợp lệ'+errMsg;
+   document.getElementById('imod-preview').innerHTML='';
+   document.getElementById('imod-confirm-btn').style.display='none';
+   return;
+  }
+  var prev=document.getElementById('imod-preview');
+  prev.innerHTML='<table><thead><tr>'+allK.map(function(k){return '<th>'+k+'</th>';}).join('')+'</tr></thead><tbody>'+
+   rows.slice(0,100).map(function(r){return '<tr>'+allK.map(function(k){return '<td>'+(r[k]!==undefined?r[k]:'')+'</td>';}).join('')+'</tr>';}).join('')+
+   (rows.length>100?'<tr><td colspan="'+allK.length+'" style="text-align:center;padding:8px;color:#94A3B8">… và '+(rows.length-100)+' hàng nữa</td></tr>':'')+
+   '</tbody></table>';
+  var btn=document.getElementById('imod-confirm-btn');
+  btn.style.display='';btn.textContent='✅ Nhập '+rows.length+' hàng vào '+cfg.lbl;
+  document.getElementById('imod-status').innerHTML='<span style="color:#16A34A">✓ Đọc được '+rows.length+' hàng</span>'+errMsg;
+ };
+
+ window.imodConfirm=function(){
+  if(!_rows||!_rows.length) return;
+  var mode=document.querySelector('input[name="imod-mode"]:checked').value;
+  if(!DATA[_ds]) DATA[_ds]=[];
+  var arr=DATA[_ds];
+  if(mode==='overwrite'){
+   var newDates=new Set(_rows.map(function(r){return r.ngay;}));
+   var kept=arr.filter(function(r){return !newDates.has(r.ngay);});
+   arr.length=0; kept.forEach(function(r){arr.push(r);});
+  }
+  _rows.forEach(function(r){arr.push(r);});
+  arr.sort(function(a,b){
+   var da=a.ngay.split('/'),db=b.ngay.split('/');
+   return new Date(+da[2],+da[1]-1,+da[0])-new Date(+db[2],+db[1]-1,+db[0]);
+  });
+  if(arr.length&&arr[0].stt!==undefined) arr.forEach(function(r,i){r.stt=i+1;});
+  // Re-render
+  try{
+   var m=+(document.getElementById('ov-month-sel')||{}).value||120;
+   if(typeof renderOverview==='function') renderOverview(m);
+   if(typeof renderFb==='function') renderFb();
+   if(typeof renderTt==='function') renderTt();
+   if(typeof renderYt==='function') renderYt();
+   if(typeof renderZav==='function') renderZav();
+   if(typeof renderZap==='function') renderZap();
+  }catch(e){console.warn('re-render',e);}
+  var n=_rows.length; _rows=null;
+  document.getElementById('imod-paste').value='';
+  document.getElementById('imod-preview').innerHTML='';
+  document.getElementById('imod-confirm-btn').style.display='none';
+  document.getElementById('imod-status').innerHTML='<span style="color:#16A34A;font-weight:700">✅ Đã nhập '+n+' hàng! Nhớ bấm "Lưu file" để lưu lại.</span>';
+ };
+
+ document.addEventListener('DOMContentLoaded',function(){
+  document.querySelectorAll('.imod-ds').forEach(function(el){
+   el.addEventListener('click',function(){imodSwitch(el.dataset.ds);});
+  });
+  document.getElementById('imod-ov').addEventListener('click',function(e){if(e.target===this)imodClose();});
+  document.getElementById('imod-close-btn').addEventListener('click',imodClose);
+ });
+})();
 
 // ── Supabase shared sync ──────────────────────────────────────────────────────
 (function(){
@@ -3806,5 +3993,89 @@ function exportSavedFile(){
 })();
 
 </script>
+
+<!-- ── Data Input Modal ─────────────────────────────── -->
+<style>
+#imod-ov{display:none;position:fixed;inset:0;background:rgba(15,23,42,.65);z-index:10000;align-items:center;justify-content:center;padding:16px;box-sizing:border-box;}
+#imod-ov.open{display:flex;}
+#imod-box{background:#fff;border-radius:16px;width:min(960px,100%);max-height:90vh;display:flex;flex-direction:column;box-shadow:0 24px 64px rgba(0,0,0,.3);overflow:hidden;}
+#imod-head{display:flex;align-items:center;gap:10px;padding:14px 20px;border-bottom:1px solid #E2E8F0;background:linear-gradient(135deg,#1D4ED8,#3B82F6);color:#fff;}
+#imod-head h3{margin:0;font-size:15px;font-weight:700;}
+#imod-close-btn{margin-left:auto;background:rgba(255,255,255,.2);border:none;color:#fff;width:28px;height:28px;border-radius:50%;font-size:16px;cursor:pointer;display:flex;align-items:center;justify-content:center;line-height:1;}
+#imod-body{display:flex;flex:1;min-height:0;overflow:hidden;}
+#imod-dsList{width:185px;min-width:150px;border-right:1px solid #E2E8F0;overflow-y:auto;padding:8px 0;flex-shrink:0;background:#FAFBFC;}
+.imod-dsgrp{padding:10px 14px 3px;font-size:10px;font-weight:700;color:#94A3B8;text-transform:uppercase;letter-spacing:.6px;}
+.imod-ds{padding:8px 14px;cursor:pointer;font-size:12px;color:#475569;border-left:3px solid transparent;transition:all .12s;}
+.imod-ds:hover{background:#F1F5F9;color:#1E293B;}
+.imod-ds.active{background:#EFF6FF;color:#1D4ED8;border-left-color:#1D4ED8;font-weight:600;}
+#imod-right{flex:1;display:flex;flex-direction:column;overflow:hidden;padding:14px 16px;gap:10px;}
+#imod-colguide{background:#F0F9FF;border:1px solid #BAE6FD;border-radius:8px;padding:10px 14px;font-size:11.5px;color:#0369A1;line-height:1.8;flex-shrink:0;}
+#imod-colguide b{color:#1E293B;font-size:12px;}
+.imod-pill{display:inline-block;background:#DBEAFE;color:#1D4ED8;border-radius:4px;padding:1px 7px;margin:1px 3px 1px 0;font-size:10.5px;font-weight:600;}
+#imod-paste{width:100%;height:110px;border:1.5px dashed #CBD5E1;border-radius:8px;padding:10px;font-size:12px;font-family:monospace;color:#334155;resize:none;outline:none;box-sizing:border-box;flex-shrink:0;transition:border-color .15s;}
+#imod-paste:focus{border-color:#3B82F6;border-style:solid;}
+#imod-opts{display:flex;align-items:center;gap:14px;font-size:12px;color:#475569;flex-shrink:0;}
+#imod-opts b{color:#1E293B;}
+#imod-opts label{display:flex;align-items:center;gap:5px;cursor:pointer;}
+#imod-preview{flex:1;overflow:auto;border:1px solid #E2E8F0;border-radius:8px;min-height:60px;max-height:260px;}
+#imod-preview table{width:100%;border-collapse:collapse;font-size:11px;}
+#imod-preview th{background:#F8FAFC;color:#64748B;padding:6px 8px;text-align:left;position:sticky;top:0;white-space:nowrap;border-bottom:1px solid #E2E8F0;}
+#imod-preview td{padding:5px 8px;border-bottom:1px solid #F1F5F9;color:#334155;white-space:nowrap;max-width:220px;overflow:hidden;text-overflow:ellipsis;}
+#imod-preview tr:hover td{background:#F8FAFC;}
+#imod-actions{display:flex;align-items:center;gap:8px;flex-shrink:0;}
+#imod-parse-btn{padding:8px 18px;background:#F1F5F9;border:1px solid #CBD5E1;border-radius:8px;font-size:12px;font-weight:600;cursor:pointer;color:#334155;transition:background .15s;}
+#imod-parse-btn:hover{background:#E2E8F0;}
+#imod-confirm-btn{padding:8px 18px;background:#16A34A;border:none;border-radius:8px;font-size:12px;font-weight:700;cursor:pointer;color:#fff;transition:background .15s;}
+#imod-confirm-btn:hover{background:#15803D;}
+#imod-status{font-size:11px;color:#64748B;margin-left:4px;}
+@media(max-width:600px){
+ #imod-dsList{width:120px;}
+ #imod-colguide{font-size:10px;}
+ .imod-pill{font-size:9.5px;padding:1px 5px;}
+}
+</style>
+
+<div id="imod-ov">
+ <div id="imod-box">
+  <div id="imod-head">
+   <h3>📥 Nhập dữ liệu thô</h3>
+   <button id="imod-close-btn">✕</button>
+  </div>
+  <div id="imod-body">
+   <div id="imod-dsList">
+    <div class="imod-dsgrp">🎵 TikTok HD</div>
+    <div class="imod-ds active" data-ds="ttd">Theo ngày</div>
+    <div class="imod-ds" data-ds="ttv">Video</div>
+    <div class="imod-dsgrp">🎵 TikTok AT</div>
+    <div class="imod-ds" data-ds="ttad">Theo ngày</div>
+    <div class="imod-ds" data-ds="ttav">Video</div>
+    <div class="imod-dsgrp">📘 Facebook</div>
+    <div class="imod-ds" data-ds="fb">Bài đăng</div>
+    <div class="imod-dsgrp">🔴 YouTube</div>
+    <div class="imod-ds" data-ds="ytd">Theo ngày</div>
+    <div class="imod-ds" data-ds="ytv">Video</div>
+    <div class="imod-dsgrp">💛 Zalo</div>
+    <div class="imod-ds" data-ds="zad">Theo ngày</div>
+    <div class="imod-ds" data-ds="zav">Video</div>
+    <div class="imod-ds" data-ds="zap">Bài đăng</div>
+   </div>
+   <div id="imod-right">
+    <div id="imod-colguide">Chọn dataset bên trái để xem hướng dẫn cột.</div>
+    <textarea id="imod-paste" placeholder="Dán dữ liệu từ Excel / Google Sheets vào đây (Ctrl+V)&#10;Dòng đầu tiên là tiêu đề cột sẽ tự động bị bỏ qua.&#10;Các cột cách nhau bằng Tab (copy thẳng từ Excel là được)."></textarea>
+    <div id="imod-opts">
+     <b>Chế độ:</b>
+     <label><input type="radio" name="imod-mode" value="append" checked> Thêm mới (giữ dữ liệu cũ)</label>
+     <label><input type="radio" name="imod-mode" value="overwrite"> Ghi đè theo ngày</label>
+    </div>
+    <div id="imod-preview"></div>
+    <div id="imod-actions">
+     <button id="imod-parse-btn" onclick="imodParse()">🔍 Xem trước</button>
+     <button id="imod-confirm-btn" onclick="imodConfirm()" style="display:none">✅ Nhập dữ liệu</button>
+     <span id="imod-status"></span>
+    </div>
+   </div>
+  </div>
+ </div>
+</div>
 </body>
 </html>
