@@ -247,6 +247,30 @@
 
     /* Export button in topnav */
     .topnav button[onclick*="exportSavedFile"] { font-size:11px; padding:5px 10px; }
+
+    /* Charts: horizontal scroll on mobile */
+    .chart-wrap { overflow-x:auto !important; -webkit-overflow-scrolling:touch; }
+    .chart-wrap canvas { min-width:420px; }
+
+    /* KPI cards: smaller font */
+    .kpi-val { font-size:20px; }
+    .kpi-label { font-size:10px; }
+    .kpi-card { padding:10px 8px; }
+
+    /* Page header */
+    .page-header { margin-bottom:10px; }
+    .page-header p { font-size:11px; }
+
+    /* Topnav: hide "Social Media Analytics" text */
+    .topnav .brand span { display:none; }
+    .topnav .brand { font-size:15px; }
+
+    /* Filters row: smaller */
+    .filter-bar { gap:4px !important; flex-wrap:wrap; }
+    .filter-bar select, .filter-bar .filter-select { font-size:11px; padding:3px 6px; }
+
+    /* Col resizer: wider touch target */
+    .td-col-resizer { width:12px; right:-6px; }
   }
 
   @media(max-width:480px){
