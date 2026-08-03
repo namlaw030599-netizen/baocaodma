@@ -1,0 +1,98 @@
+{
+  "name": "HD SAISON – Facebook Posts Sync",
+  "nodes": [
+    {
+      "parameters": {
+        "rule": { "interval": [{ "field": "cronExpression", "expression": "0 7 * * *" }] }
+      },
+      "name": "Every day 7am",
+      "type": "n8n-nodes-base.scheduleTrigger",
+      "position": [240, 300]
+    },
+    {
+      "parameters": {
+        "jsCode": "const d = new Date();\nd.setDate(d.getDate() - 1);\nreturn [{ json: { date: d.toISOString().split('T')[0] } }];"
+      },
+      "name": "Get Yesterday",
+      "type": "n8n-nodes-base.code",
+      "position": [460, 300]
+    },
+    {
+      "parameters": {
+        "method": "GET",
+        "url": "=https://graph.facebook.com/v21.0/THAY_BANG_PAGE_ID/posts",
+        "sendQuery": true,
+        "queryParameters": {
+          "parameters": [
+            { "name": "fields",        "value": "id,message,created_time,attachments" },
+            { "name": "since",         "value": "={{ $json.date }}" },
+            { "name": "access_token",  "value": "THAY_BANG_PAGE_ACCESS_TOKEN" },
+            { "name": "limit",         "value": "50" }
+          ]
+        }
+      },
+      "name": "Get FB Posts",
+      "type": "n8n-nodes-base.httpRequest",
+      "notes": "⚠️ Thay:\n  THAY_BANG_PAGE_ID → Page ID của Facebook page HD SAISON\n  THAY_BANG_PAGE_ACCESS_TOKEN → Long-lived Page Access Token\n  Lấy từ: Meta Business Suite → Settings → Page Access Tokens",
+      "position": [680, 300]
+    },
+    {
+      "parameters": {
+        "method": "GET",
+        "url": "=https://graph.facebook.com/v21.0/{{ $json.id }}/insights",
+        "sendQuery": true,
+        "queryParameters": {
+          "parameters": [
+            { "name": "metric", "value": "post_impressions,post_reach,post_reactions_by_type_total,post_clicks,post_activity" },
+            { "name": "access_token", "value": "THAY_BANG_PAGE_ACCESS_TOKEN" }
+          ]
+        }
+      },
+      "name": "Get Post Insights",
+      "type": "n8n-nodes-base.httpRequest",
+      "position": [900, 300]
+    },
+    {
+      "parameters": {
+        "jsCode": "// Map Facebook API response → facebook_posts schema\nconst insights = $input.item.json?.data || [];\nconst getMetric = (name) => (insights.find(m=>m.name===name)?.values?.[0]?.value) || 0;\nconst post = $('Get FB Posts').item.json;\nconst createdTime = new Date(post.created_time);\nconst ngay = createdTime.toISOString().split('T')[0];\nconst gio = createdTime.getHours();\nconst reactions = getMetric('post_reactions_by_type_total');\nconst totalReactions = typeof reactions === 'object' ? Object.values(reactions).reduce((a,b)=>a+b,0) : 0;\nreturn [{ json: {\n  post_id:   post.id,\n  ngay:      ngay,\n  gio:       gio,\n  tieude:    (post.message||'').substring(0,200),\n  loai:      post.attachments?.data?.[0]?.media_type || 'Text',\n  xem:       getMetric('post_impressions'),\n  tiepcan:   getMetric('post_reach'),\n  camxuc:    totalReactions,\n  binhluan:  0,\n  chiase:    0,\n  click:     getMetric('post_clicks'),\n  linkclick: 0,\n  chude:     null\n}}];"
+      },
+      "name": "Map FB Fields",
+      "type": "n8n-nodes-base.code",
+      "position": [1120, 300]
+    },
+    {
+      "parameters": {
+        "operation": "upsert",
+        "tableId": "facebook_posts",
+        "onConflict": "post_id",
+        "fieldsUi": {
+          "fieldValues": [
+            { "fieldId": "post_id",   "fieldValue": "={{ $json.post_id }}" },
+            { "fieldId": "ngay",      "fieldValue": "={{ $json.ngay }}" },
+            { "fieldId": "gio",       "fieldValue": "={{ $json.gio }}" },
+            { "fieldId": "tieude",    "fieldValue": "={{ $json.tieude }}" },
+            { "fieldId": "loai",      "fieldValue": "={{ $json.loai }}" },
+            { "fieldId": "xem",       "fieldValue": "={{ $json.xem }}" },
+            { "fieldId": "tiepcan",   "fieldValue": "={{ $json.tiepcan }}" },
+            { "fieldId": "camxuc",    "fieldValue": "={{ $json.camxuc }}" },
+            { "fieldId": "binhluan",  "fieldValue": "={{ $json.binhluan }}" },
+            { "fieldId": "chiase",    "fieldValue": "={{ $json.chiase }}" },
+            { "fieldId": "click",     "fieldValue": "={{ $json.click }}" },
+            { "fieldId": "linkclick", "fieldValue": "={{ $json.linkclick }}" },
+            { "fieldId": "chude",     "fieldValue": "={{ $json.chude }}" }
+          ]
+        }
+      },
+      "name": "Upsert → Supabase",
+      "type": "n8n-nodes-base.supabase",
+      "position": [1340, 300]
+    }
+  ],
+  "connections": {
+    "Every day 7am":    { "main": [[{ "node": "Get Yesterday",     "type": "main", "index": 0 }]] },
+    "Get Yesterday":    { "main": [[{ "node": "Get FB Posts",       "type": "main", "index": 0 }]] },
+    "Get FB Posts":     { "main": [[{ "node": "Get Post Insights",  "type": "main", "index": 0 }]] },
+    "Get Post Insights":{ "main": [[{ "node": "Map FB Fields",      "type": "main", "index": 0 }]] },
+    "Map FB Fields":    { "main": [[{ "node": "Upsert → Supabase",  "type": "main", "index": 0 }]] }
+  }
+}

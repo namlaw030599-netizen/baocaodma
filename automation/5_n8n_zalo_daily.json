@@ -1,0 +1,77 @@
+{
+  "name": "HD SAISON – Zalo OA Daily Sync",
+  "nodes": [
+    {
+      "parameters": {
+        "rule": { "interval": [{ "field": "cronExpression", "expression": "0 7 * * *" }] }
+      },
+      "name": "Every day 7am",
+      "type": "n8n-nodes-base.scheduleTrigger",
+      "position": [240, 300]
+    },
+    {
+      "parameters": {
+        "jsCode": "const d = new Date();\nd.setDate(d.getDate() - 1);\nconst ts = Math.floor(d.getTime() / 1000);\nconst ngay = d.toISOString().split('T')[0];\nreturn [{ json: { date: ngay, timestamp: ts } }];"
+      },
+      "name": "Get Yesterday",
+      "type": "n8n-nodes-base.code",
+      "position": [460, 300]
+    },
+    {
+      "parameters": {
+        "method": "GET",
+        "url": "https://openapi.zalo.me/v2.0/oa/getgraphinsight",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            { "name": "access_token", "value": "THAY_BANG_ZALO_ACCESS_TOKEN" }
+          ]
+        },
+        "sendQuery": true,
+        "queryParameters": {
+          "parameters": [
+            { "name": "params", "value": "=[{\"alias\":\"follower_stat\",\"from\":{{ $json.timestamp }},\"to\":{{ $json.timestamp + 86399 }}}]" }
+          ]
+        }
+      },
+      "name": "Zalo OA API",
+      "type": "n8n-nodes-base.httpRequest",
+      "notes": "⚠️ Cần:\n1. Zalo for Business → OA → Đăng ký ứng dụng\n2. Lấy Access Token (refresh 90 ngày)\n3. Scope cần: oa.get.insight\nTài liệu: https://developers.zalo.me/docs/official-account",
+      "position": [680, 300]
+    },
+    {
+      "parameters": {
+        "jsCode": "const data = $input.item.json?.data || {};\nreturn [{ json: {\n  ngay:     $('Get Yesterday').item.json.date,\n  xem:      parseInt(data.total_follower_data?.total_view || 0),\n  thich:    parseInt(data.total_follower_data?.total_like || 0),\n  chiase:   parseInt(data.total_follower_data?.total_share || 0),\n  binhluan: parseInt(data.total_follower_data?.total_comment || 0),\n  follow:   parseInt(data.total_follower_data?.follow_count || 0)\n}}];\n// ⚠️ Điều chỉnh field mapping theo response thực tế từ Zalo API"
+      },
+      "name": "Map Zalo Fields",
+      "type": "n8n-nodes-base.code",
+      "position": [900, 300]
+    },
+    {
+      "parameters": {
+        "operation": "upsert",
+        "tableId": "zalo_daily",
+        "onConflict": "ngay",
+        "fieldsUi": {
+          "fieldValues": [
+            { "fieldId": "ngay",     "fieldValue": "={{ $json.ngay }}" },
+            { "fieldId": "xem",      "fieldValue": "={{ $json.xem }}" },
+            { "fieldId": "thich",    "fieldValue": "={{ $json.thich }}" },
+            { "fieldId": "chiase",   "fieldValue": "={{ $json.chiase }}" },
+            { "fieldId": "binhluan", "fieldValue": "={{ $json.binhluan }}" },
+            { "fieldId": "follow",   "fieldValue": "={{ $json.follow }}" }
+          ]
+        }
+      },
+      "name": "Upsert → Supabase",
+      "type": "n8n-nodes-base.supabase",
+      "position": [1120, 300]
+    }
+  ],
+  "connections": {
+    "Every day 7am":  { "main": [[{ "node": "Get Yesterday",    "type": "main", "index": 0 }]] },
+    "Get Yesterday":  { "main": [[{ "node": "Zalo OA API",       "type": "main", "index": 0 }]] },
+    "Zalo OA API":    { "main": [[{ "node": "Map Zalo Fields",   "type": "main", "index": 0 }]] },
+    "Map Zalo Fields":{ "main": [[{ "node": "Upsert → Supabase", "type": "main", "index": 0 }]] }
+  }
+}

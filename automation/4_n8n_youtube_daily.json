@@ -1,0 +1,74 @@
+{
+  "name": "HD SAISON – YouTube Daily Sync",
+  "nodes": [
+    {
+      "parameters": {
+        "rule": { "interval": [{ "field": "cronExpression", "expression": "0 7 * * *" }] }
+      },
+      "name": "Every day 7am",
+      "type": "n8n-nodes-base.scheduleTrigger",
+      "position": [240, 300]
+    },
+    {
+      "parameters": {
+        "jsCode": "const d = new Date();\nd.setDate(d.getDate() - 1);\nconst ngay = d.toISOString().split('T')[0];\nreturn [{ json: { date: ngay } }];"
+      },
+      "name": "Get Yesterday",
+      "type": "n8n-nodes-base.code",
+      "position": [460, 300]
+    },
+    {
+      "parameters": {
+        "method": "GET",
+        "url": "https://youtubeanalytics.googleapis.com/v2/reports",
+        "authentication": "oAuth2",
+        "sendQuery": true,
+        "queryParameters": {
+          "parameters": [
+            { "name": "ids",         "value": "channel==MINE" },
+            { "name": "startDate",   "value": "={{ $json.date }}" },
+            { "name": "endDate",     "value": "={{ $json.date }}" },
+            { "name": "metrics",     "value": "views,estimatedMinutesWatched,averageViewDuration,subscribersGained" },
+            { "name": "dimensions",  "value": "day" }
+          ]
+        }
+      },
+      "name": "YouTube Analytics API",
+      "type": "n8n-nodes-base.httpRequest",
+      "notes": "⚠️ Cần setup:\n1. Google Cloud Console → Enable YouTube Analytics API\n2. Tạo OAuth 2.0 credentials (Desktop app)\n3. Trong n8n: Credentials → Google OAuth2 → dán Client ID + Secret\n4. Authorize với tài khoản YouTube HD SAISON",
+      "position": [680, 300]
+    },
+    {
+      "parameters": {
+        "jsCode": "const rows = $input.item.json?.rows || [];\nif (!rows.length) return [];\nconst row = rows[0];\n// row = [day, views, estimatedMinutesWatched, averageViewDuration, subscribersGained]\nreturn [{ json: {\n  ngay:    row[0],\n  xem:     parseInt(row[1] || 0),\n  sosanh:  0,\n  danhgia: ''\n}}];"
+      },
+      "name": "Map YT Fields",
+      "type": "n8n-nodes-base.code",
+      "position": [900, 300]
+    },
+    {
+      "parameters": {
+        "operation": "upsert",
+        "tableId": "youtube_daily",
+        "onConflict": "ngay",
+        "fieldsUi": {
+          "fieldValues": [
+            { "fieldId": "ngay",    "fieldValue": "={{ $json.ngay }}" },
+            { "fieldId": "xem",     "fieldValue": "={{ $json.xem }}" },
+            { "fieldId": "sosanh",  "fieldValue": "={{ $json.sosanh }}" },
+            { "fieldId": "danhgia", "fieldValue": "={{ $json.danhgia }}" }
+          ]
+        }
+      },
+      "name": "Upsert → Supabase",
+      "type": "n8n-nodes-base.supabase",
+      "position": [1120, 300]
+    }
+  ],
+  "connections": {
+    "Every day 7am":        { "main": [[{ "node": "Get Yesterday",        "type": "main", "index": 0 }]] },
+    "Get Yesterday":        { "main": [[{ "node": "YouTube Analytics API", "type": "main", "index": 0 }]] },
+    "YouTube Analytics API":{ "main": [[{ "node": "Map YT Fields",         "type": "main", "index": 0 }]] },
+    "Map YT Fields":        { "main": [[{ "node": "Upsert → Supabase",     "type": "main", "index": 0 }]] }
+  }
+}

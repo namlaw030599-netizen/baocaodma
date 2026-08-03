@@ -1,0 +1,91 @@
+{
+  "name": "HD SAISON – TikTok Daily Sync",
+  "nodes": [
+    {
+      "parameters": {
+        "rule": { "interval": [{ "field": "cronExpression", "expression": "0 7 * * *" }] }
+      },
+      "name": "Every day 7am",
+      "type": "n8n-nodes-base.scheduleTrigger",
+      "position": [240, 300]
+    },
+    {
+      "parameters": {
+        "jsCode": "// Tính ngày hôm qua (YYYY-MM-DD)\nconst d = new Date();\nd.setDate(d.getDate() - 1);\nconst ngay = d.toISOString().split('T')[0];\nreturn [{ json: { date: ngay, dateStart: ngay, dateEnd: ngay } }];"
+      },
+      "name": "Get Yesterday",
+      "type": "n8n-nodes-base.code",
+      "position": [460, 300]
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "https://business-api.tiktok.com/open_api/v1.3/report/integrated/get/",
+        "authentication": "genericCredentialType",
+        "genericAuthType": "httpHeaderAuth",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            { "name": "Access-Token", "value": "={{ $credentials.value }}" }
+          ]
+        },
+        "sendBody": true,
+        "bodyParameters": {
+          "parameters": [
+            {
+              "name": "",
+              "value": "={\n  \"advertiser_id\": \"THAY_BANG_ADVERTISER_ID_CUA_BAN\",\n  \"report_type\": \"AUDIENCE\",\n  \"dimensions\": [\"stat_time_day\"],\n  \"metrics\": [\"impressions\",\"clicks\",\"video_play_actions\",\"reach\",\"follows\",\"profile_visits\"],\n  \"data_level\": \"AUCTION_ADVERTISER\",\n  \"start_date\": \"{{ $json.dateStart }}\",\n  \"end_date\": \"{{ $json.dateEnd }}\",\n  \"page\": 1,\n  \"page_size\": 20\n}"
+            }
+          ]
+        }
+      },
+      "name": "TikTok API – HD Account",
+      "type": "n8n-nodes-base.httpRequest",
+      "notes": "⚠️ Thay THAY_BANG_ADVERTISER_ID_CUA_BAN bằng Advertiser ID thực của tài khoản HD.\nThêm Credential loại 'Header Auth' với name=Access-Token, value=access_token của bạn.",
+      "position": [680, 200]
+    },
+    {
+      "parameters": {
+        "jsCode": "// Map TikTok API response → Supabase tiktok_daily schema\nconst rows = $input.item.json?.data?.list || [];\nreturn rows.map(r => ({\n  json: {\n    platform: 'hd',\n    ngay: r.dimensions?.stat_time_day || $('Get Yesterday').item.json.date,\n    xem:   parseInt(r.metrics?.video_play_actions || 0),\n    reach: parseInt(r.metrics?.reach || 0),\n    xemhd: 0,\n    thich: 0,\n    chiase: 0,\n    bl:    0,\n    web:   parseInt(r.metrics?.profile_visits || 0),\n    leads: 0,\n    app:   0,\n    fnew:  parseInt(r.metrics?.follows || 0),\n    flost: 0,\n    rong:  parseInt(r.metrics?.follows || 0)\n  }\n}));\n// ⚠️ Điều chỉnh field mapping theo response thực tế từ TikTok API của bạn"
+      },
+      "name": "Map HD Fields",
+      "type": "n8n-nodes-base.code",
+      "position": [900, 200]
+    },
+    {
+      "parameters": {
+        "operation": "upsert",
+        "tableId": "tiktok_daily",
+        "onConflict": "platform,ngay",
+        "fieldsUi": {
+          "fieldValues": [
+            { "fieldId": "platform", "fieldValue": "={{ $json.platform }}" },
+            { "fieldId": "ngay",     "fieldValue": "={{ $json.ngay }}" },
+            { "fieldId": "xem",      "fieldValue": "={{ $json.xem }}" },
+            { "fieldId": "reach",    "fieldValue": "={{ $json.reach }}" },
+            { "fieldId": "xemhd",    "fieldValue": "={{ $json.xemhd }}" },
+            { "fieldId": "thich",    "fieldValue": "={{ $json.thich }}" },
+            { "fieldId": "chiase",   "fieldValue": "={{ $json.chiase }}" },
+            { "fieldId": "bl",       "fieldValue": "={{ $json.bl }}" },
+            { "fieldId": "web",      "fieldValue": "={{ $json.web }}" },
+            { "fieldId": "leads",    "fieldValue": "={{ $json.leads }}" },
+            { "fieldId": "app",      "fieldValue": "={{ $json.app }}" },
+            { "fieldId": "fnew",     "fieldValue": "={{ $json.fnew }}" },
+            { "fieldId": "flost",    "fieldValue": "={{ $json.flost }}" },
+            { "fieldId": "rong",     "fieldValue": "={{ $json.rong }}" }
+          ]
+        }
+      },
+      "name": "Upsert → Supabase",
+      "type": "n8n-nodes-base.supabase",
+      "notes": "⚠️ Thêm Supabase credential:\n  URL = https://hiaehhrlidjrezrlbyux.supabase.co\n  Service Role Key = lấy từ Supabase → Settings → API → service_role (secret)",
+      "position": [1120, 200]
+    }
+  ],
+  "connections": {
+    "Every day 7am":      { "main": [[{ "node": "Get Yesterday",        "type": "main", "index": 0 }]] },
+    "Get Yesterday":      { "main": [[{ "node": "TikTok API – HD Account","type": "main", "index": 0 }]] },
+    "TikTok API – HD Account": { "main": [[{ "node": "Map HD Fields",   "type": "main", "index": 0 }]] },
+    "Map HD Fields":      { "main": [[{ "node": "Upsert → Supabase",    "type": "main", "index": 0 }]] }
+  }
+}
