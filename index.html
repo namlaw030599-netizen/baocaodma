@@ -250,7 +250,9 @@
 
     /* Charts: horizontal scroll on mobile */
     .chart-wrap { overflow-x:auto !important; -webkit-overflow-scrolling:touch; }
-    .chart-wrap canvas { min-width:420px; }
+    .chart-wrap canvas { min-width:600px; }
+    /* Cluster charts with many platforms need more room */
+    #ov-monthly, #fb-cluster, #tt-cluster { min-width:800px; }
 
     /* KPI cards: smaller font */
     .kpi-val { font-size:20px; }
