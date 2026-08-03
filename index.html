@@ -3736,8 +3736,49 @@ function exportSavedFile(){
 
 // ── Data Input Modal ─────────────────────────────────────────────────────────
 (function(){
+ // Keyword synonyms for auto-detecting columns from any platform export
+ var SYN={
+  ngay:['ngày','date','thời gian','time','ng y','ngay','published date','post date','reporting date'],
+  xem:['lượt xem','views','video views','lượt xem video','impressions','view','lxt','lượt hiển thị'],
+  reach:['tiếp cận','reach','người tiếp cận','lượt tiếp cận','unique viewers','people reached','người xem duy nhất'],
+  xemhd:['xem hết','xem full','full views','xem hd','2-second views','watched full video'],
+  thich:['thích','likes','lượt thích','reactions','like'],
+  chiase:['chia sẻ','shares','lượt chia sẻ','share'],
+  binhluan:['bình luận','comments','lượt bình luận','comment'],
+  bl:['bl','bình luận (bl)'],
+  follow:['follow','người theo dõi','followers','theo dõi lũy kế','net followers','follower count'],
+  fnew:['follow mới','new followers','người mới theo dõi','gained followers','followed'],
+  flost:['follow rời','unfollow','unfollows','lost followers','hủy theo dõi'],
+  web:['web click','website click','lượt click web','website visits','web'],
+  leads:['leads','khách hàng tiềm năng','lead'],
+  app:['app','tải app','app install','ứng dụng'],
+  rong:['rong','net','net change'],
+  tieude:['tiêu đề','title','caption','nội dung','tên video','video title','post title'],
+  loai:['loại','type','media type','loại bài','post type','content type'],
+  tiepcan:['tiếp cận','reach','people reached','lượt tiếp cận bài'],
+  camxuc:['cảm xúc','reactions','emotion','like+love+haha'],
+  click:['click','lượt click','total clicks','clicks'],
+  linkclick:['link click','link clicks','url clicks','lượt click link'],
+  chude:['chủ đề','topic','theme','loại nội dung','content category'],
+  gio:['giờ','hour','giờ đăng','time posted','gio','giờ (gio)'],
+  url:['url','link','đường dẫn','video url','post url'],
+  sub:['sub','subscribers','người đăng ký','đăng ký','new subscribers'],
+  retention:['retention','tỷ lệ xem','avg view duration','average view duration','tỷ lệ giữ chân','average percentage viewed'],
+  gioxem:['giờ xem','watch time','thời gian xem (giờ)','watch hours'],
+  ctr:['ctr','click-through rate','impression ctr'],
+  yeuthich:['yêu thích','favorites','saved','lưu','bookmark'],
+  tongtgxem:['tổng tg xem','total watch time','total time viewed','tổng thời gian xem'],
+  tbtgxem:['tb tg xem','avg watch time','average time viewed','trung bình thời gian xem'],
+  tile:['tỉ lệ','tile','rate','tỷ lệ(%)','completion rate'],
+  share:['chia sẻ','share','shares'],
+  trangthai:['trạng thái','status','tình trạng'],
+  sosanh:['so sánh','compare','sosanh','yoy','mom'],
+  danhgia:['đánh giá','rating','review','danhgia'],
+  tonguoc:['tổng ước','estimate'],
+ };
+
  var DAILY_TT=[
-  {k:'ngay',lbl:'Ngày (DD/MM/YYYY)',t:'date'},{k:'xem',lbl:'Lượt xem',t:'num'},{k:'reach',lbl:'Tiếp cận',t:'num'},
+  {k:'ngay',lbl:'Ngày',t:'date'},{k:'xem',lbl:'Lượt xem',t:'num'},{k:'reach',lbl:'Tiếp cận',t:'num'},
   {k:'xemhd',lbl:'Xem Full',t:'num'},{k:'thich',lbl:'Thích',t:'num'},{k:'chiase',lbl:'Chia sẻ',t:'num'},
   {k:'bl',lbl:'Bình luận',t:'num'},{k:'web',lbl:'Web Click',t:'num'},{k:'leads',lbl:'Leads',t:'num'},
   {k:'app',lbl:'App',t:'num'},{k:'fnew',lbl:'Follow mới',t:'num'},{k:'flost',lbl:'Follow rời',t:'num'},{k:'rong',lbl:'Rong',t:'num'}
@@ -3782,12 +3823,35 @@ function exportSavedFile(){
   ]}
  };
 
+ function norm(s){return String(s||'').toLowerCase().replace(/[àáạảãâầấậẩẫăằắặẳẵ]/g,'a').replace(/[èéẹẻẽêềếệểễ]/g,'e').replace(/[ìíịỉĩ]/g,'i').replace(/[òóọỏõôồốộổỗơờớợởỡ]/g,'o').replace(/[ùúụủũưừứựửữ]/g,'u').replace(/[ỳýỵỷỹ]/g,'y').replace(/đ/g,'d').replace(/[^a-z0-9]/g,' ').replace(/\s+/g,' ').trim();}
+
+ function matchCol(header){
+   var h=norm(header);
+   var best=null,bestScore=0;
+   Object.keys(SYN).forEach(function(k){
+     SYN[k].forEach(function(syn){
+       var s=norm(syn);
+       var score=0;
+       if(h===s) score=100;
+       else if(h.indexOf(s)>=0||s.indexOf(h)>=0) score=70;
+       else{
+         // word overlap
+         var hw=h.split(' '),sw=s.split(' ');
+         var overlap=hw.filter(function(w){return w.length>2&&sw.indexOf(w)>=0;}).length;
+         if(overlap>0) score=overlap*20;
+       }
+       if(score>bestScore){bestScore=score;best=k;}
+     });
+   });
+   return bestScore>=20?best:null;
+ }
+
  function pDate(s){
-  if(!s) return null;
-  s=s.trim();
+  if(!s) return null; s=String(s).trim();
   var d,m,y;
   if(/^\d{1,2}\/\d{1,2}\/\d{4}$/.test(s)){var p=s.split('/');d=+p[0];m=+p[1];y=+p[2];}
   else if(/^\d{4}-\d{2}-\d{2}$/.test(s)){var p=s.split('-');y=+p[0];m=+p[1];d=+p[2];}
+  else if(/^\d{1,2}-\d{1,2}-\d{4}$/.test(s)){var p=s.split('-');d=+p[0];m=+p[1];y=+p[2];}
   else return null;
   if(!d||!m||!y) return null;
   return {d:d,m:m,y:y,fmt:(d<10?'0':'')+d+'/'+(m<10?'0':'')+m+'/'+y};
@@ -3809,7 +3873,7 @@ function exportSavedFile(){
   if(dsKey==='zad'||dsKey==='ytd'){row.thu=DAYS_VI[new Date(dt.y,dt.m-1,dt.d).getDay()];row.tuan=Math.ceil(dt.d/7);}
  }
 
- var _ds='ttd',_rows=null;
+ var _ds='ttd',_rows=null,_colMap=null,_pastedHeaders=null;
 
  window.imodOpen=function(){
   document.getElementById('imod-ov').classList.add('open');
@@ -3818,33 +3882,157 @@ function exportSavedFile(){
  function imodClose(){document.getElementById('imod-ov').classList.remove('open');}
 
  function imodSwitch(dsKey){
-  _ds=dsKey; _rows=null;
+  _ds=dsKey; _rows=null; _colMap=null; _pastedHeaders=null;
   document.getElementById('imod-paste').value='';
+  document.getElementById('imod-mapping').innerHTML='';
   document.getElementById('imod-preview').innerHTML='';
   document.getElementById('imod-status').textContent='';
   document.getElementById('imod-confirm-btn').style.display='none';
   document.querySelectorAll('.imod-ds').forEach(function(el){el.classList.toggle('active',el.dataset.ds===dsKey);});
   var cfg=IMOD_CFG[dsKey];
-  document.getElementById('imod-colguide').innerHTML='<b>'+cfg.lbl+'</b> — Thứ tự cột dán từ trái sang phải:<br>'+
-   cfg.cols.map(function(c,i){return '<span class="imod-pill">'+(i+1)+'. '+c.lbl+'</span>';}).join('');
+  var reqCols=cfg.cols.filter(function(c){return c.k==='ngay'||c.k==='xem'||c.k==='tieude';}).map(function(c){return c.lbl;});
+  document.getElementById('imod-colguide').innerHTML=
+   '<b>'+cfg.lbl+'</b><br>'+
+   'Copy toàn bộ bảng từ Excel (bao gồm hàng tiêu đề cột) rồi dán vào ô bên dưới.<br>'+
+   'Dashboard sẽ <b>tự nhận diện tên cột</b> — không cần sắp xếp lại thứ tự.<br>'+
+   '<span style="color:#0369A1">Các cột cần có: '+cfg.cols.map(function(c){return '<span class="imod-pill">'+c.lbl+'</span>';}).join('')+'</span>';
  }
+
+ // Download template CSV
+ window.imodDownloadTemplate=function(){
+  var cfg=IMOD_CFG[_ds];
+  var header=cfg.cols.map(function(c){return c.lbl;}).join('\t');
+  var blob=new Blob([header+'\n'],{type:'text/tab-separated-values;charset=utf-8'});
+  var url=URL.createObjectURL(blob);
+  var a=document.createElement('a'); a.href=url; a.download=cfg.lbl.replace(/[^a-zA-Z0-9\s]/g,'')+' – Template.tsv';
+  document.body.appendChild(a); a.click(); a.remove(); setTimeout(function(){URL.revokeObjectURL(url);},2000);
+ };
 
  window.imodParse=function(){
   var text=document.getElementById('imod-paste').value.trim();
   if(!text){document.getElementById('imod-status').textContent='⚠️ Chưa có dữ liệu!';return;}
   var cfg=IMOD_CFG[_ds],cols=cfg.cols;
   var lines=text.split('\n').filter(function(l){return l.trim();});
-  var start=0;
-  // Skip header if first cell is not a date
-  if(lines.length&&!pDate(lines[0].split('\t')[0])&&!pDate(lines[0].split(',')[0])) start=1;
+  if(!lines.length){document.getElementById('imod-status').textContent='⚠️ Không có dữ liệu!';return;}
+
+  // Detect separator
+  var sep='\t';
+  if(lines[0].split('\t').length<2&&lines[0].split(',').length>1) sep=',';
+
+  // Detect if first row is header
+  var firstCells=lines[0].split(sep);
+  var looksLikeHeader=!pDate(firstCells[0])&&firstCells.some(function(c){return isNaN(parseFloat(c.replace(/,/g,'').trim()))||c.trim().length===0;});
+  
+  var dataStart=0;
+  var mapping={}; // dsKey → pastedColIndex
+  var unmapped=[];
+
+  if(looksLikeHeader){
+   _pastedHeaders=firstCells.map(function(c){return c.trim();});
+   dataStart=1;
+   // Auto-map headers
+   cols.forEach(function(c){
+    var bestIdx=-1,bestScore=0;
+    _pastedHeaders.forEach(function(h,i){
+     var matched=matchCol(h);
+     if(matched===c.k&&(bestIdx<0||h.length<_pastedHeaders[bestIdx].length)){bestIdx=i;bestScore=80;}
+     // Also try direct keyword check
+     var hn=norm(h);
+     SYN[c.k]&&SYN[c.k].forEach(function(syn){if(hn.indexOf(norm(syn))>=0&&bestScore<90){bestIdx=i;bestScore=90;}});
+    });
+    if(bestIdx>=0) mapping[c.k]=bestIdx;
+    else unmapped.push(c);
+   });
+   _colMap=mapping;
+   // Show mapping UI
+   showMapping(cols,_pastedHeaders,mapping,unmapped);
+  } else {
+   // No header — positional mapping
+   _pastedHeaders=null; _colMap=null;
+   cols.forEach(function(c,i){mapping[c.k]=i;});
+   _colMap=mapping;
+   document.getElementById('imod-mapping').innerHTML='<div style="font-size:11px;color:#64748B;padding:6px 0">⚠️ Không phát hiện hàng tiêu đề — dùng thứ tự cột mặc định.</div>';
+  }
+
+  // Parse data rows
   var rows=[],errs=0;
-  for(var i=start;i<lines.length;i++){
-   var sep=lines[i].indexOf('\t')>=0?'\t':',';
+  for(var i=dataStart;i<lines.length;i++){
    var cells=lines[i].split(sep);
    if(cells.every(function(c){return !c.trim();})) continue;
    var row={};
-   cols.forEach(function(c,ci){
-    var val=ci<cells.length?cells[ci]:'';
+   cols.forEach(function(c){
+    var ci=_colMap[c.k];
+    var val=(ci!==undefined&&ci<cells.length)?cells[ci]:'';
+    if(c.t==='date'){var dt=pDate(val);row[c.k]=dt?dt.fmt:'';}
+    else row[c.k]=pNum(val,c.t);
+   });
+   if(!row.ngay||!pDate(row.ngay)){errs++;continue;}
+   deriveRow(row,_ds);
+   rows.push(row);
+  }
+  _rows=rows;
+
+  var allK=cols.map(function(c){return c.k;});
+  var errMsg=errs?' · <span style="color:#EF4444">'+errs+' hàng lỗi/bỏ qua</span>':'';
+  if(!rows.length){
+   document.getElementById('imod-status').innerHTML='⚠️ Không có hàng hợp lệ'+errMsg;
+   document.getElementById('imod-preview').innerHTML='';
+   document.getElementById('imod-confirm-btn').style.display='none';
+   return;
+  }
+  var prev=document.getElementById('imod-preview');
+  prev.innerHTML='<table><thead><tr>'+allK.map(function(k){return '<th>'+k+'</th>';}).join('')+'</tr></thead><tbody>'+
+   rows.slice(0,80).map(function(r){return '<tr>'+allK.map(function(k){return '<td>'+(r[k]!==undefined?r[k]:'')+'</td>';}).join('')+'</tr>';}).join('')+
+   (rows.length>80?'<tr><td colspan="'+allK.length+'" style="text-align:center;padding:8px;color:#94A3B8">… '+( rows.length-80)+' hàng nữa</td></tr>':'')+
+   '</tbody></table>';
+  var btn=document.getElementById('imod-confirm-btn');
+  btn.style.display='';btn.textContent='✅ Nhập '+rows.length+' hàng';
+  document.getElementById('imod-status').innerHTML='<span style="color:#16A34A">✓ Đọc được '+rows.length+' hàng hợp lệ</span>'+errMsg;
+ };
+
+ function showMapping(cols,headers,mapping,unmapped){
+  var html='<div style="font-size:11px;margin-bottom:6px"><b>Nhận diện cột tự động</b> — kiểm tra và chỉnh nếu cần:</div>';
+  html+='<table style="font-size:11px;border-collapse:collapse;width:100%"><thead><tr><th style="padding:4px 8px;background:#F8FAFC;border-bottom:1px solid #E2E8F0">Trường dữ liệu</th><th style="padding:4px 8px;background:#F8FAFC;border-bottom:1px solid #E2E8F0">Cột từ file export</th></tr></thead><tbody>';
+  cols.forEach(function(c){
+   var mapped=mapping[c.k];
+   var opts='<option value="">— bỏ qua —</option>';
+   headers.forEach(function(h,i){opts+='<option value="'+i+'"'+(mapped===i?' selected':'')+'>'+h+'</option>';});
+   var color=mapped!==undefined?'#16A34A':'#94A3B8';
+   var icon=mapped!==undefined?'✓':'○';
+   html+='<tr><td style="padding:4px 8px;color:'+color+';font-weight:600">'+icon+' '+c.lbl+'</td>'+
+    '<td style="padding:4px 8px"><select class="imod-col-sel" data-field="'+c.k+'" style="font-size:11px;padding:3px 6px;border:1px solid #E2E8F0;border-radius:5px;width:100%">'+opts+'</select></td></tr>';
+  });
+  html+='</tbody></table>';
+  var el=document.getElementById('imod-mapping');
+  el.innerHTML=html;
+  // Wire up change events
+  el.querySelectorAll('.imod-col-sel').forEach(function(sel){
+   sel.addEventListener('change',function(){
+    var k=sel.dataset.field;
+    var v=sel.value;
+    if(v==='') delete _colMap[k];
+    else _colMap[k]=+v;
+    // Re-run parse silently after mapping change
+    reparseWithMapping();
+   });
+  });
+ }
+
+ function reparseWithMapping(){
+  if(!_pastedHeaders) return;
+  var cfg=IMOD_CFG[_ds],cols=cfg.cols;
+  var text=document.getElementById('imod-paste').value.trim();
+  var lines=text.split('\n').filter(function(l){return l.trim();});
+  var sep='\t';
+  if(lines[0].split('\t').length<2&&lines[0].split(',').length>1) sep=',';
+  var rows=[],errs=0;
+  for(var i=1;i<lines.length;i++){
+   var cells=lines[i].split(sep);
+   if(cells.every(function(c){return !c.trim();})) continue;
+   var row={};
+   cols.forEach(function(c){
+    var ci=_colMap[c.k];
+    var val=(ci!==undefined&&ci<cells.length)?cells[ci]:'';
     if(c.t==='date'){var dt=pDate(val);row[c.k]=dt?dt.fmt:'';}
     else row[c.k]=pNum(val,c.t);
    });
@@ -3854,22 +4042,16 @@ function exportSavedFile(){
   }
   _rows=rows;
   var allK=cols.map(function(c){return c.k;});
-  var errMsg=errs?' · <span style="color:#EF4444">'+errs+' hàng lỗi bị bỏ qua</span>':'';
-  if(!rows.length){
-   document.getElementById('imod-status').innerHTML='⚠️ Không có hàng hợp lệ'+errMsg;
-   document.getElementById('imod-preview').innerHTML='';
-   document.getElementById('imod-confirm-btn').style.display='none';
-   return;
-  }
   var prev=document.getElementById('imod-preview');
-  prev.innerHTML='<table><thead><tr>'+allK.map(function(k){return '<th>'+k+'</th>';}).join('')+'</tr></thead><tbody>'+
-   rows.slice(0,100).map(function(r){return '<tr>'+allK.map(function(k){return '<td>'+(r[k]!==undefined?r[k]:'')+'</td>';}).join('')+'</tr>';}).join('')+
-   (rows.length>100?'<tr><td colspan="'+allK.length+'" style="text-align:center;padding:8px;color:#94A3B8">… và '+(rows.length-100)+' hàng nữa</td></tr>':'')+
-   '</tbody></table>';
-  var btn=document.getElementById('imod-confirm-btn');
-  btn.style.display='';btn.textContent='✅ Nhập '+rows.length+' hàng vào '+cfg.lbl;
-  document.getElementById('imod-status').innerHTML='<span style="color:#16A34A">✓ Đọc được '+rows.length+' hàng</span>'+errMsg;
- };
+  if(rows.length){
+   prev.innerHTML='<table><thead><tr>'+allK.map(function(k){return '<th>'+k+'</th>';}).join('')+'</tr></thead><tbody>'+
+    rows.slice(0,80).map(function(r){return '<tr>'+allK.map(function(k){return '<td>'+(r[k]!==undefined?r[k]:'')+'</td>';}).join('')+'</tr>';}).join('')+
+    '</tbody></table>';
+   var btn=document.getElementById('imod-confirm-btn');
+   btn.style.display='';btn.textContent='✅ Nhập '+rows.length+' hàng';
+   document.getElementById('imod-status').innerHTML='<span style="color:#16A34A">✓ '+rows.length+' hàng</span>'+(errs?' · <span style="color:#EF4444">'+errs+' lỗi</span>':'');
+  }
+ }
 
  window.imodConfirm=function(){
   if(!_rows||!_rows.length) return;
@@ -3887,7 +4069,6 @@ function exportSavedFile(){
    return new Date(+da[2],+da[1]-1,+da[0])-new Date(+db[2],+db[1]-1,+db[0]);
   });
   if(arr.length&&arr[0].stt!==undefined) arr.forEach(function(r,i){r.stt=i+1;});
-  // Re-render
   try{
    var m=+(document.getElementById('ov-month-sel')||{}).value||120;
    if(typeof renderOverview==='function') renderOverview(m);
@@ -3899,9 +4080,10 @@ function exportSavedFile(){
   }catch(e){console.warn('re-render',e);}
   var n=_rows.length; _rows=null;
   document.getElementById('imod-paste').value='';
+  document.getElementById('imod-mapping').innerHTML='';
   document.getElementById('imod-preview').innerHTML='';
   document.getElementById('imod-confirm-btn').style.display='none';
-  document.getElementById('imod-status').innerHTML='<span style="color:#16A34A;font-weight:700">✅ Đã nhập '+n+' hàng! Nhớ bấm "Lưu file" để lưu lại.</span>';
+  document.getElementById('imod-status').innerHTML='<span style="color:#16A34A;font-weight:700">✅ Đã nhập '+n+' hàng! Bấm "Lưu file" để lưu lại.</span>';
  };
 
  document.addEventListener('DOMContentLoaded',function(){
@@ -4028,6 +4210,9 @@ function exportSavedFile(){
 #imod-confirm-btn{padding:8px 18px;background:#16A34A;border:none;border-radius:8px;font-size:12px;font-weight:700;cursor:pointer;color:#fff;transition:background .15s;}
 #imod-confirm-btn:hover{background:#15803D;}
 #imod-status{font-size:11px;color:#64748B;margin-left:4px;}
+#imod-mapping{font-size:11px;flex-shrink:0;max-height:200px;overflow-y:auto;}
+#imod-mapping table{width:100%;border-collapse:collapse;}
+#imod-mapping td{padding:3px 6px;border-bottom:1px solid #F1F5F9;}
 @media(max-width:600px){
  #imod-dsList{width:120px;}
  #imod-colguide{font-size:10px;}
@@ -4060,16 +4245,18 @@ function exportSavedFile(){
     <div class="imod-ds" data-ds="zap">Bài đăng</div>
    </div>
    <div id="imod-right">
-    <div id="imod-colguide">Chọn dataset bên trái để xem hướng dẫn cột.</div>
-    <textarea id="imod-paste" placeholder="Dán dữ liệu từ Excel / Google Sheets vào đây (Ctrl+V)&#10;Dòng đầu tiên là tiêu đề cột sẽ tự động bị bỏ qua.&#10;Các cột cách nhau bằng Tab (copy thẳng từ Excel là được)."></textarea>
+    <div id="imod-colguide">Chọn dataset bên trái để xem hướng dẫn.</div>
+    <textarea id="imod-paste" placeholder="1. Mở file export từ TikTok / Facebook / YouTube / Zalo trong Excel&#10;2. Chọn toàn bộ bảng (bao gồm hàng tiêu đề cột) → Ctrl+C&#10;3. Dán vào đây → Ctrl+V&#10;Dashboard sẽ tự nhận diện tên cột, không cần sắp xếp lại."></textarea>
     <div id="imod-opts">
      <b>Chế độ:</b>
-     <label><input type="radio" name="imod-mode" value="append" checked> Thêm mới (giữ dữ liệu cũ)</label>
+     <label><input type="radio" name="imod-mode" value="append" checked> Thêm mới (giữ data cũ)</label>
      <label><input type="radio" name="imod-mode" value="overwrite"> Ghi đè theo ngày</label>
+     <button onclick="imodDownloadTemplate()" style="margin-left:auto;padding:4px 10px;font-size:11px;background:#F1F5F9;border:1px solid #CBD5E1;border-radius:6px;cursor:pointer;color:#475569">📋 Tải template</button>
     </div>
+    <div id="imod-mapping"></div>
     <div id="imod-preview"></div>
     <div id="imod-actions">
-     <button id="imod-parse-btn" onclick="imodParse()">🔍 Xem trước</button>
+     <button id="imod-parse-btn" onclick="imodParse()">🔍 Phân tích</button>
      <button id="imod-confirm-btn" onclick="imodConfirm()" style="display:none">✅ Nhập dữ liệu</button>
      <span id="imod-status"></span>
     </div>
